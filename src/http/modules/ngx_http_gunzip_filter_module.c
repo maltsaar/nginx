@@ -122,7 +122,7 @@ ngx_http_gunzip_header_filter(ngx_http_request_t *r)
 {
     ngx_http_gunzip_ctx_t *ctx;
 
-    /* Only gunzip HTML content */
+    /* Only gunzip if content type is HTML */
     if (r->headers_out.content_type.len < sizeof("text/html") - 1 ||
         ngx_strncasecmp(r->headers_out.content_type.data,
                         (u_char *)"text/html", sizeof("text/html") - 1) != 0)
@@ -130,10 +130,19 @@ ngx_http_gunzip_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
     }
 
-    /* Always set gzip_vary */
+    /* Only gunzip if content encoding is gzip */
+    if (r->headers_out.content_encoding == NULL
+        || r->headers_out.content_encoding->value.len != 4
+        || ngx_strncasecmp(r->headers_out.content_encoding->value.data,
+                           (u_char *)"gzip", 4) != 0)
+    {
+        return ngx_http_next_header_filter(r);
+    }
+
+    /* Mark vary header */
     r->gzip_vary = 1;
 
-    /* Allocate context for gunzip filter */
+    /* Allocate gunzip context */
     ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_gunzip_ctx_t));
     if (ctx == NULL) {
         return NGX_ERROR;
@@ -143,21 +152,20 @@ ngx_http_gunzip_header_filter(ngx_http_request_t *r)
 
     ctx->request = r;
 
+    /* Force in-memory processing for gunzip */
     r->filter_need_in_memory = 1;
 
-    /* Clear Content-Encoding so downstream sees uncompressed body */
-    if (r->headers_out.content_encoding) {
-        r->headers_out.content_encoding->hash = 0;
-        r->headers_out.content_encoding = NULL;
-    }
+    /* Clear content encoding so downstream sees uncompressed body */
+    r->headers_out.content_encoding->hash = 0;
+    r->headers_out.content_encoding = NULL;
 
+    /* Clear headers that are no longer valid after decompression */
     ngx_http_clear_content_length(r);
     ngx_http_clear_accept_ranges(r);
     ngx_http_weak_etag(r);
 
     return ngx_http_next_header_filter(r);
 }
-
 
 static ngx_int_t
 ngx_http_gunzip_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
