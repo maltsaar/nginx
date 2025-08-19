@@ -120,35 +120,12 @@ static ngx_http_output_body_filter_pt    ngx_http_next_body_filter;
 static ngx_int_t
 ngx_http_gunzip_header_filter(ngx_http_request_t *r)
 {
-    ngx_http_gunzip_ctx_t   *ctx;
-    ngx_http_gunzip_conf_t  *conf;
+    ngx_http_gunzip_ctx_t *ctx;
 
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_gunzip_filter_module);
-
-    /* TODO support multiple content-codings */
-    /* TODO always gunzip - due to configuration or module request */
-    /* TODO ignore content encoding? */
-
-    if (!conf->enable
-        || r->headers_out.content_encoding == NULL
-        || r->headers_out.content_encoding->value.len != 4
-        || ngx_strncasecmp(r->headers_out.content_encoding->value.data,
-                           (u_char *) "gzip", 4) != 0)
-    {
-        return ngx_http_next_header_filter(r);
-    }
-
+    /* Always set gzip_vary */
     r->gzip_vary = 1;
 
-    if (!r->gzip_tested) {
-        if (ngx_http_gzip_ok(r) == NGX_OK) {
-            return ngx_http_next_header_filter(r);
-        }
-
-    } else if (r->gzip_ok) {
-        return ngx_http_next_header_filter(r);
-    }
-
+    /* Allocate context for gunzip filter */
     ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_gunzip_ctx_t));
     if (ctx == NULL) {
         return NGX_ERROR;
@@ -160,8 +137,11 @@ ngx_http_gunzip_header_filter(ngx_http_request_t *r)
 
     r->filter_need_in_memory = 1;
 
-    r->headers_out.content_encoding->hash = 0;
-    r->headers_out.content_encoding = NULL;
+    /* Clear Content-Encoding so downstream sees uncompressed body */
+    if (r->headers_out.content_encoding) {
+        r->headers_out.content_encoding->hash = 0;
+        r->headers_out.content_encoding = NULL;
+    }
 
     ngx_http_clear_content_length(r);
     ngx_http_clear_accept_ranges(r);
