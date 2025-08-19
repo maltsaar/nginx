@@ -122,6 +122,14 @@ ngx_http_gunzip_header_filter(ngx_http_request_t *r)
 {
     ngx_http_gunzip_ctx_t *ctx;
 
+    /* Only gunzip HTML content */
+    if (r->headers_out.content_type.len < sizeof("text/html") - 1 ||
+        ngx_strncasecmp(r->headers_out.content_type.data,
+                        (u_char *)"text/html", sizeof("text/html") - 1) != 0)
+    {
+        return ngx_http_next_header_filter(r);
+    }
+
     /* Always set gzip_vary */
     r->gzip_vary = 1;
 
